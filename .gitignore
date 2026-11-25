@@ -1,0 +1,9 @@
+data/
+scores/
+*.parquet
+*.npy
+*.npz
+*.zip
+__pycache__/
+*.pyc
+figures/

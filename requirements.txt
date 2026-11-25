@@ -1,0 +1,11 @@
+# Tested on the Kaggle "Latest Container Image" (Python 3.13, November 2026, GPU T4) and locally with Python 3.10.
+numpy>=1.26
+pandas>=2.1
+pyarrow>=14
+scipy>=1.11
+scikit-learn>=1.4
+lightgbm>=4.3
+xgboost>=2.0
+torch>=2.2
+shap>=0.44
+matplotlib>=3.8
