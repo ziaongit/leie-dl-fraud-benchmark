@@ -72,6 +72,8 @@ python analysis/p3_labels.py out data                  # rebuild test labels for
 python analysis/p3_extra.py out                        # TOST equivalence, complementarity, combination
 python analysis/p3_confcal.py out phys                 # confusion counts at k = 1,000 / 5,000 and calibration bins
 python analysis/p3_censor.py out data phys             # sensitivity: drop data years with incomplete LEIE look-ahead (>= 2023)
+python analysis/p3_window.py out phys                  # sensitivity: test positives 2-3 or 3 years before exclusion only (needs out/_ytx_phys.parquet)
+python analysis/p3_fairness.py out phys                # share of rural providers and provider types among the top 1,000
 DATA=data WORK=out python robustness/p3_robust_deep.py noise   # label noise, all 7 models (needs benchmark/p3_bench.py alongside)
 DATA=data WORK=out python robustness/p3_robust_deep.py ny      # New York independent labels, all 7 models
 RUN1=out RUN2=out python analysis/make_figs.py && RUN1=out RUN2=out python analysis/make_figs2.py
@@ -96,6 +98,8 @@ RUN1=out RUN2=out python analysis/make_figs.py && RUN1=out RUN2=out python analy
 | `results/run1/p3_complementarity.csv`, `p3_combination.csv` | Overlap of top-1,000 lists, rank-average combinations |
 | `results/run1/p3_confusion_*.csv`, `p3_calibration_*.csv` | Confusion counts at audit budgets, reliability-diagram bins |
 | `results/run1/p3_censor_*.csv` | Grouped results recomputed without data years 2023-2024 (right-censored labels) |
+| `results/run1/p3_window_*.csv` | Label-window sensitivity (positives 1-3, 2-3 or 3 years before exclusion) |
+| `results/run1/p3_fairness_*.csv` | Flag composition: rural share and provider types among the top 1,000 |
 | `results/run2/p3_attention_results_*.csv`, `p3_attention_importances_*.csv` | Attention vs SHAP, permutation and ablation importance (per fold, order and feature) |
 | `results/run2/results_phys_lc*.csv` | Learning curve (10%, 25%, 50% of training providers) |
 | `results/run3/p3_robust_noise.csv` | Label noise: 5 folds x q in {0, 0.25, 0.5} x 7 models (tuned) |
@@ -106,6 +110,7 @@ Note: run 1 used `p3_bench.py` without the `DATA_FRAC` option; the version here 
 
 ## Changelog
 
+* 2026-11-26: added label-window sensitivity (`p3_window.py`) and flag-composition analysis (`p3_fairness.py`), as reported in paper draft v0.8.
 * 2026-11-25: added run 3 (`robustness/p3_robust_deep.py`, `results/run3/`): label-noise and New York analyses for all seven models with full tuning, as reported in paper draft v0.7.
 * 2026-11-25: fixed the Nadeau-Bengio correction in `p3_analyse.py` and `p3_extra.py` (the ratio n_test/n_train now uses the fold sizes, 1/(K-1) = 0.25; the first version used the sub-sampled training size, which made the tests too conservative). `p3_pairwise.csv`, `p3_equivalence.csv` and `p3_summary.csv` were regenerated. Added `p3_censor.py`.
 
