@@ -14,7 +14,7 @@ logistic regression, LightGBM, XGBoost, an MLP, an FT-Transformer, a CNN-RNN and
 | `data_prep/` | Build the labelled provider-year datasets from the public CMS and LEIE files |
 | `benchmark/` | `p3_bench.py` (main benchmark, all models) and `p3_attention.py` (attention vs SHAP, permutation and ablation) |
 | `analysis/` | Summary tables, corrected t-tests, equivalence tests, complementarity, combination, confusion counts, calibration, figures |
-| `robustness/` | Label-noise simulation and the independent New York State exclusion-list test |
+| `robustness/` | Label-noise simulation and the independent New York State exclusion-list test: `p3_robust_deep.py` (all seven models, full tuning; used in the paper) and the earlier fixed-configuration versions `label_noise.py`, `ny_external.py` |
 | `kaggle/` | The exact Kaggle notebook cells used for the two GPU runs |
 | `results/` | All result files reported in the paper (per-split metrics, statistics, attention results, learning curve) |
 
@@ -72,8 +72,8 @@ python analysis/p3_labels.py out data                  # rebuild test labels for
 python analysis/p3_extra.py out                        # TOST equivalence, complementarity, combination
 python analysis/p3_confcal.py out phys                 # confusion counts at k = 1,000 / 5,000 and calibration bins
 python analysis/p3_censor.py out data phys             # sensitivity: drop data years with incomplete LEIE look-ahead (>= 2023)
-python robustness/label_noise.py data/phys results/label_noise_results.csv
-python robustness/ny_external.py data/ny_npi_exclusions.csv data/analysis
+DATA=data WORK=out python robustness/p3_robust_deep.py noise   # label noise, all 7 models (needs benchmark/p3_bench.py alongside)
+DATA=data WORK=out python robustness/p3_robust_deep.py ny      # New York independent labels, all 7 models
 RUN1=out RUN2=out python analysis/make_figs.py && RUN1=out RUN2=out python analysis/make_figs2.py
 ```
 
@@ -98,12 +98,15 @@ RUN1=out RUN2=out python analysis/make_figs.py && RUN1=out RUN2=out python analy
 | `results/run1/p3_censor_*.csv` | Grouped results recomputed without data years 2023-2024 (right-censored labels) |
 | `results/run2/p3_attention_results_*.csv`, `p3_attention_importances_*.csv` | Attention vs SHAP, permutation and ablation importance (per fold, order and feature) |
 | `results/run2/results_phys_lc*.csv` | Learning curve (10%, 25%, 50% of training providers) |
-| `results/label_noise_results.csv`, `ny_external_results.csv` | Robustness analyses |
+| `results/run3/p3_robust_noise.csv` | Label noise: 5 folds x q in {0, 0.25, 0.5} x 7 models (tuned) |
+| `results/run3/p3_robust_ny.csv` | New York independent labels (107 positives) and LEIE-in-New-York comparison (27 positives), 7 models |
+| `results/label_noise_results.csv`, `ny_external_results.csv` | Earlier fixed-configuration robustness runs (4 and 2 models; superseded by run 3) |
 
 Note: run 1 used `p3_bench.py` without the `DATA_FRAC` option; the version here adds only that option (default 1.0 = identical behaviour).
 
 ## Changelog
 
+* 2026-11-25: added run 3 (`robustness/p3_robust_deep.py`, `results/run3/`): label-noise and New York analyses for all seven models with full tuning, as reported in paper draft v0.7.
 * 2026-11-25: fixed the Nadeau-Bengio correction in `p3_analyse.py` and `p3_extra.py` (the ratio n_test/n_train now uses the fold sizes, 1/(K-1) = 0.25; the first version used the sub-sampled training size, which made the tests too conservative). `p3_pairwise.csv`, `p3_equivalence.csv` and `p3_summary.csv` were regenerated. Added `p3_censor.py`.
 
 ## Licence and citation
