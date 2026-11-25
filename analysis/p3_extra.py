@@ -13,6 +13,7 @@ RD = sys.argv[1] if len(sys.argv) > 1 else '/kaggle/working'
 R = pd.concat([pd.read_csv(f) for f in glob.glob(f'{RD}/results_*.csv')], ignore_index=True); R = R[R.perm == 0]
 DEEP = ['MLP', 'FTT', 'CNNRNN', 'AttnCNNRNN']
 
+K_FOLDS = 5   # Nadeau-Bengio: n_test/n_train = 1/(K-1) (fixed 2026-11-25; previously the sub-sampled training size was used)
 def nb_var(diff, ntr, nte): return (1 / len(diff) + nte / ntr) * diff.var(ddof=1)
 rows = []
 for (ds, des), sub in R.groupby(['dataset', 'design']):
@@ -22,7 +23,7 @@ for (ds, des), sub in R.groupby(['dataset', 'design']):
         for mdl in [m for m in DEEP + ['LogReg'] if m in piv]:
             dif = (piv[mdl] - piv[best]).dropna().values; J = len(dif)
             if J < 2: continue
-            se = np.sqrt(nb_var(dif, sub.n_train.mean(), sub.n_test.mean())) if des == 'grouped' else dif.std(ddof=1) / np.sqrt(J)
+            se = np.sqrt(nb_var(dif, K_FOLDS - 1, 1)) if des == 'grouped' else dif.std(ddof=1) / np.sqrt(J)
             t1 = (dif.mean() + M) / se; t2 = (dif.mean() - M) / se
             p_tost = max(stats.t.sf(t1, J - 1), stats.t.cdf(t2, J - 1))
             rows.append(dict(dataset=ds, design=des, metric=metric, reference=best, model=mdl, mean_diff=dif.mean(), margin=M,

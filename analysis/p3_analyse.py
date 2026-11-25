@@ -5,13 +5,16 @@
  - feature-order sensitivity of CNN-RNN models: spread of PR-AUC/ROC-AUC across random feature orders on the same folds
 Writes p3_summary.csv, p3_pairwise.csv, p3_order_sensitivity.csv."""
 import pandas as pd, numpy as np, glob
+# Nadeau-Bengio correction uses the ratio of test to training FOLD sizes, n_test/n_train = 1/(K-1) for K-fold CV (0.25 for K = 5).
+# (Fixed 2026-11-25: an earlier version used the size of the sub-sampled training set, which made the tests far too conservative.)
+K_FOLDS = 5
 import sys
 RD = sys.argv[1] if len(sys.argv) > 1 else '/kaggle/working'
 from scipy import stats
 R = pd.concat([pd.read_csv(f) for f in glob.glob(RD + '/results_*.csv')], ignore_index=True)
 MET = ['pr_auc', 'roc_auc', 'lift_pr', 'prec_at_100', 'prec_at_1000', 'recall_at_1000', 'recall_at_5000', 'brier', 'ece', 'secs']
 base = R[R.perm == 0]
-S = base.groupby(['dataset', 'design', 'model'])[MET].agg(['mean', 'std', 'count'])
+S = base.groupby(['dataset', 'design', 'model'])[MET].agg(['mean', 'median', 'std', 'count'])
 S.columns = ['_'.join(c) for c in S.columns]; S = S.reset_index(); S.to_csv(RD + '/p3_summary.csv', index=False)
 
 def nb_ttest(diff, n_train, n_test):
@@ -25,7 +28,7 @@ for (ds, des), sub in base.groupby(['dataset', 'design']):
     for metric in ['pr_auc', 'roc_auc', 'prec_at_1000']:
         piv = sub.pivot_table(index=['rep', 'fold'], columns='model', values=metric)
         best = piv.mean().idxmax()
-        ntr = sub.n_train.mean(); nte = sub.n_test.mean()
+        ntr, nte = K_FOLDS - 1, 1
         for mdl in piv.columns:
             if mdl == best: continue
             dfr = (piv[best] - piv[mdl]).dropna().values

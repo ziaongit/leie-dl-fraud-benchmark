@@ -71,6 +71,7 @@ python analysis/p3_analyse.py out                      # summary, Nadeau-Bengio 
 python analysis/p3_labels.py out data                  # rebuild test labels for the saved scores
 python analysis/p3_extra.py out                        # TOST equivalence, complementarity, combination
 python analysis/p3_confcal.py out phys                 # confusion counts at k = 1,000 / 5,000 and calibration bins
+python analysis/p3_censor.py out data phys             # sensitivity: drop data years with incomplete LEIE look-ahead (>= 2023)
 python robustness/label_noise.py data/phys results/label_noise_results.csv
 python robustness/ny_external.py data/ny_npi_exclusions.csv data/analysis
 RUN1=out RUN2=out python analysis/make_figs.py && RUN1=out RUN2=out python analysis/make_figs2.py
@@ -94,11 +95,16 @@ RUN1=out RUN2=out python analysis/make_figs.py && RUN1=out RUN2=out python analy
 | `results/run1/p3_order_sensitivity.csv` | Range of PR-AUC and ROC-AUC across feature orders |
 | `results/run1/p3_complementarity.csv`, `p3_combination.csv` | Overlap of top-1,000 lists, rank-average combinations |
 | `results/run1/p3_confusion_*.csv`, `p3_calibration_*.csv` | Confusion counts at audit budgets, reliability-diagram bins |
+| `results/run1/p3_censor_*.csv` | Grouped results recomputed without data years 2023-2024 (right-censored labels) |
 | `results/run2/p3_attention_results_*.csv`, `p3_attention_importances_*.csv` | Attention vs SHAP, permutation and ablation importance (per fold, order and feature) |
 | `results/run2/results_phys_lc*.csv` | Learning curve (10%, 25%, 50% of training providers) |
 | `results/label_noise_results.csv`, `ny_external_results.csv` | Robustness analyses |
 
 Note: run 1 used `p3_bench.py` without the `DATA_FRAC` option; the version here adds only that option (default 1.0 = identical behaviour).
+
+## Changelog
+
+* 2026-11-25: fixed the Nadeau-Bengio correction in `p3_analyse.py` and `p3_extra.py` (the ratio n_test/n_train now uses the fold sizes, 1/(K-1) = 0.25; the first version used the sub-sampled training size, which made the tests too conservative). `p3_pairwise.csv`, `p3_equivalence.csv` and `p3_summary.csv` were regenerated. Added `p3_censor.py`.
 
 ## Licence and citation
 
