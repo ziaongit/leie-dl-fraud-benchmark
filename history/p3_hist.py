@@ -1,15 +1,16 @@
 """Paper 3 v2 - sequence models on GENUINE sequences: each provider's own billing history over years.
-For every target provider-year t (Physician data, the benchmark sample), the input is the provider's numeric profile in
+For every target provider-year t (Physician or Part D data, the benchmark sample), the input is the provider's numeric profile in
 years t-3, t-2, t-1 and t (missing years zero-filled with a presence flag); categorical variables are those of year t.
 Earlier years of fraud providers that are not in the benchmark sample (more than three years before exclusion) are
-added from hist_extra_rows_phys.parquet so that fraud and non-fraud providers have comparable histories; their labels are
+added from hist_extra_rows_<dataset>.parquet so that fraud and non-fraud providers have comparable histories; their labels are
 never used. Same folds, training subset, preprocessing (fitted on training target rows), tuning budget and metrics as
 p3_bench.py (grouped design, repeat 0, five folds).
 Models: LightGBM on year t only (reference), LightGBM and MLP on the flattened 4-year history (order-free use of the same
 information), GRU over years and GRU with additive attention over years (sequence models where order is meaningful).
-Usage: python p3_hist.py   (env: WORK, HMODELS, HFOLDS)"""
+Usage: HDS=phys|partd REPLIST=0,1,2 python p3_hist.py   (env: WORK, HMODELS, HFOLDS)"""
 import os, sys, glob, json, time, zlib
-sys.argv = [sys.argv[0], 'phys', 'grouped', '1', '5']
+HDS = os.environ.get('HDS', 'phys')
+sys.argv = [sys.argv[0], HDS, 'grouped', '1', '5']
 here = os.path.dirname(os.path.abspath(__file__))
 cands = [os.path.join(here, 'p3_bench.py')] + glob.glob('/kaggle/input/**/p3_bench.py', recursive=True)
 src = open([c for c in cands if os.path.exists(c)][0]).read()
@@ -18,17 +19,18 @@ src = src[:src.index("done = set()")]
 exec(src)
 import numpy as np, pandas as pd, torch, torch.nn as nn, lightgbm as lgb
 WORKH = os.environ.get('WORK', '/kaggle/working/hist'); os.makedirs(WORKH, exist_ok=True)
-OUTH = f'{WORKH}/results_hist_phys.csv'
+OUTH = f'{WORKH}/results_hist_{HDS}.csv'
+REPLIST = [int(r) for r in os.environ.get('REPLIST', '0').split(',')]
 HMODELS = os.environ.get('HMODELS', 'LightGBM_cur,LightGBM_hist,MLP_hist,GRU_hist,AttnGRU_hist').split(',')
 L = 4                                                          # years t-3 .. t
 
 # ---- append history-only rows (earlier years of fraud providers) ----
-xf = glob.glob('/kaggle/input/**/hist_extra_rows_phys.parquet', recursive=True) + glob.glob(os.path.join(os.environ.get('DATA', '.'), '**/hist_extra_rows_phys.parquet'), recursive=True)
+xf = glob.glob(f'/kaggle/input/**/hist_extra_rows_{HDS}.parquet', recursive=True) + glob.glob(os.path.join(os.environ.get('DATA', '.'), f'**/hist_extra_rows_{HDS}.parquet'), recursive=True)
 x = pd.read_parquet([f for f in xf if os.path.exists(f)][0])
 n0 = len(y)
 XN = np.vstack([XN, x[NUM].values.astype(np.float32)])
 XC = np.vstack([XC, np.stack([pd.Categorical(x[c].astype(str), categories=CATS[c]).codes for c in CAT], 1).astype(np.int32)])
-g_all = np.concatenate([g, x.Rndrng_NPI.values]); yr_all = np.concatenate([yr, x.year.values.astype(int)])
+g_all = np.concatenate([g, x[ID].values]); yr_all = np.concatenate([yr, x.year.values.astype(int)])
 key = pd.Series(np.arange(len(g_all)), index=pd.MultiIndex.from_arrays([g_all, yr_all]))
 key = key[~key.index.duplicated()]
 H = np.full((n0, L), -1, np.int64); H[:, L - 1] = np.arange(n0)
@@ -80,8 +82,8 @@ def hfit(name, cfg, P, HP, tri, vai, seed):
     return average_precision_score(y[vai], f(vai), sample_weight=w_all[vai]), f
 
 done = set(pd.read_csv(OUTH).key) if os.path.exists(OUTH) else set()
-rep = 0; salt = np.array([zlib.crc32((n + str(rep)).encode()) for n in g]) % FOLDS
-for fold in range(int(os.environ.get('HFOLDS', FOLDS))):
+for rep, fold in [(r, f) for r in REPLIST for f in range(int(os.environ.get('HFOLDS', FOLDS)))]:
+    salt = np.array([zlib.crc32((n + str(rep)).encode()) for n in g]) % FOLDS
     tr, te = np.where(salt != fold)[0], np.where(salt == fold)[0]
     rng = np.random.default_rng(1000 * rep + fold)
     vh = np.array([zlib.crc32((n + 'v' + str(rep)).encode()) % 100 for n in g[tr]]); trn, va = tr[vh >= 15], tr[vh < 15]
@@ -89,14 +91,14 @@ for fold in range(int(os.environ.get('HFOLDS', FOLDS))):
     vneg = va[y[va] == 0]; vai = np.concatenate([va[y[va] == 1], rng.choice(vneg, size=min(len(vneg), 30000), replace=False)])
     P = Prep(tri); HP = HistP(P)
     for name in HMODELS:
-        k = f'hist_{fold}_{name}'
+        k = f'hist_{HDS}_{rep}_{fold}_{name}'
         if k in done: continue
         t0 = time.time(); best = (-1, None, None)
         for ci, cfg in enumerate(hconfigs(name, np.random.default_rng(500 + 10 * fold + rep))):
             ap, f = hfit(name, cfg, P, HP, tri, vai, seed=ci)
             if ap > best[0]: best = (ap, f, cfg)
-        s = best[1](te); r = dict(key=k, fold=fold, model=name, val_pr_auc=best[0], cfg=json.dumps(best[2]), secs=round(time.time() - t0), pos_test=int(y[te].sum()))
+        s = best[1](te); r = dict(key=k, dataset=HDS, rep=rep, fold=fold, model=name, val_pr_auc=best[0], cfg=json.dumps(best[2]), secs=round(time.time() - t0), pos_test=int(y[te].sum()))
         r.update(metrics(y[te], s, w_all[te])); pd.DataFrame([r]).to_csv(OUTH, mode='a', header=not os.path.exists(OUTH), index=False)
-        np.save(f'{WORKH}/hist_{fold}_{name}.npy', s.astype(np.float32))
-        print('hist', fold, name, 'PR', round(r['pr_auc'], 5), 'lift', round(r['lift_pr'], 1), 'ROC', round(r['roc_auc'], 3), 'P@1000', round(r['prec_at_1000'], 4), r['secs'], 's', flush=True)
+        np.save(f'{WORKH}/{k}.npy', s.astype(np.float32))
+        print('hist', HDS, rep, fold, name, 'PR', round(r['pr_auc'], 5), 'lift', round(r['lift_pr'], 1), 'ROC', round(r['roc_auc'], 3), 'P@1000', round(r['prec_at_1000'], 4), r['secs'], 's', flush=True)
 print('HIST DONE', flush=True)

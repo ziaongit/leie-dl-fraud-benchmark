@@ -52,16 +52,41 @@ Evaluate a new model with `python benchmark/evaluate.py score ...` on the same s
 | 6 | Attention CNN-RNN | 0.0007 | 6.0 / 5.3 | 0.767 | 0.40 | 3 |
 | 7 | CNN-RNN | 0.0005 | 4.1 / 3.9 | 0.729 | 0.10 | 3 |
 
-## Physician - provider histories (grouped repeat 0, 5 folds)
+## Provider histories (genuine sequences), grouped design, 15 folds per data source
 
-Input: the provider's numeric profile in years t-3 to t (see `history/p3_hist.py`).
+Input: the provider's numeric profile in years t-3 to t (see `history/p3_hist.py`). Lift: PR-AUC lift over the base rate (mean / median); P@1000: precision among the top 1,000 provider-years (%).
 
-| Rank | Model | PR-AUC | Lift (mean / median) | ROC-AUC | Precision@1,000 (%) | Splits |
-|---|---|---|---|---|---|---|
-| 1 | LightGBM (4-year history, flattened) | 0.0048 | 46.5 / 38.4 | 0.842 | 1.16 | 5 |
-| 2 | Attention GRU over years | 0.0048 | 45.7 / 26.2 | 0.873 | 0.76 | 5 |
-| 3 | GRU over years | 0.0036 | 32.3 / 26.1 | 0.874 | 1.24 | 5 |
-| 4 | MLP (4-year history, flattened) | 0.0023 | 21.7 / 19.5 | 0.866 | 0.96 | 5 |
-| 5 | LightGBM (year t only) | 0.0015 | 14.0 / 13.5 | 0.830 | 0.60 | 5 |
+| Rank | Model | Physician lift | Physician ROC-AUC | Physician P@1000 | Part D lift | Part D ROC-AUC | Part D P@1000 |
+|---|---|---|---|---|---|---|---|
+| 1 | LightGBM (4-year history, flattened) | 50.2 / 38.4 | 0.858 | 1.17 | 61.2 / 55.7 | 0.858 | 2.68 |
+| 2 | GRU over years | 38.2 / 36.1 | 0.868 | 1.26 | 41.3 / 38.6 | 0.856 | 2.20 |
+| 3 | MLP (4-year history, flattened) | 26.3 / 19.6 | 0.867 | 0.99 | 36.1 / 36.5 | 0.851 | 2.02 |
+| 4 | Attention GRU over years | 36.0 / 21.0 | 0.863 | 0.81 | 35.4 / 30.7 | 0.854 | 1.97 |
+| 5 | LightGBM (year t only) | 19.6 / 14.1 | 0.831 | 0.57 | 17.9 / 12.4 | 0.821 | 0.99 |
 
-Ranked by median PR-AUC lift over the base rate. Source: Ullah and Khan (manuscript, 2026), run 1 of this repository.
+Ranked by median lift (mean of the two data sources). Source: runs 5 and 6, `results/run6/hist_15fold.csv`.
+
+## Independent labels: 32 state Medicaid exclusion lists (test 2020-2022)
+
+Models trained on LEIE labels (2013-2019) and tested against state exclusions of providers never in the LEIE (343 Physician and 428 Part D positive provider-years). Provider-level bootstrap 95% intervals (2,000 replicates). Source: run 7, `results/run7/p3_states_ci.csv`.
+
+| Model | Physician ROC-AUC | Physician lift | Part D ROC-AUC | Part D lift |
+|---|---|---|---|---|
+| LightGBM | 0.72 (0.68-0.76) | 5.7 (3.7-11.0) | 0.70 (0.67-0.74) | 9.4 (3.1-35.8) |
+| CNN-RNN | 0.71 (0.67-0.75) | 5.9 (2.8-26.4) | 0.70 (0.67-0.73) | 4.0 (2.7-6.6) |
+| XGBoost | 0.69 (0.65-0.73) | 4.5 (2.9-8.0) | 0.71 (0.67-0.74) | 4.7 (2.9-9.4) |
+| MLP | 0.68 (0.64-0.72) | 4.2 (2.7-9.5) | 0.73 (0.70-0.76) | 3.5 (2.6-5.6) |
+| FT-Transformer | 0.69 (0.65-0.73) | 3.3 (2.4-5.0) | 0.72 (0.68-0.75) | 3.0 (2.3-4.3) |
+| Attention CNN-RNN | 0.64 (0.60-0.68) | 3.2 (1.6-14.6) | 0.69 (0.66-0.72) | 2.5 (2.0-3.4) |
+| Logistic regression | 0.70 (0.67-0.74) | 2.8 (2.2-4.0) | 0.72 (0.69-0.75) | 3.4 (2.5-4.9) |
+
+## Retrospective deployment simulation (deployment years 2016-2022)
+
+Retrained each year on the exclusions known at that time; the top 1,000 / 5,000 provider-years of the next data year are audited. Random audits of 1,000 would find 0.11 (Physician) and 0.17 (Part D) cases per year. Source: `results/deployment/`.
+
+| Model | Physician: cases/yr at 1,000 | at 5,000 | Part D: cases/yr at 1,000 | at 5,000 |
+|---|---|---|---|---|
+| XGBoost | 3.3 | 9.1 | 4.4 | 12.3 |
+| LightGBM | 2.7 | 10.3 | 4.0 | 13.0 |
+| MLP | 2.0 | 8.9 | 3.4 | 12.4 |
+| Logistic regression | 1.7 | 6.7 | 2.9 | 9.7 |

@@ -15,7 +15,10 @@ logistic regression, LightGBM, XGBoost, an MLP, an FT-Transformer, a CNN-RNN and
 | `benchmark/` | `p3_bench.py` (main benchmark, all models) and `p3_attention.py` (attention vs SHAP, permutation and ablation) |
 | `analysis/` | Summary tables, corrected t-tests, equivalence tests, complementarity, combination, confusion counts, calibration, figures |
 | `robustness/` | Label-noise simulation and the independent New York State exclusion-list test: `p3_robust_deep.py` (all seven models, full tuning; used in the paper) and the earlier fixed-configuration versions `label_noise.py`, `ny_external.py` |
-| `history/` | Provider-history experiment (sequence models on genuine sequences): `extract_hist_rows.py` adds the earlier years of fraud providers from the full CMS files, `p3_hist.py` trains the models |
+| `history/` | Provider-history experiment (sequence models on genuine sequences): `extract_hist_rows.py` / `extract_hist_rows_partd.py` add the earlier years of fraud providers from the full CMS files, `p3_hist.py` trains the models (both data sources, 15 folds) |
+| `states/` | Independent validation on 32 state Medicaid exclusion lists: `p3_states.py` (train on LEIE 2013-2019, test 2020-2022), `rebuild_test.py` and `p3_states_ci.py` (provider-level bootstrap intervals) |
+| `stats/` | Complementary statistics: provider-level bootstrap of fold-averaged metrics (`build_labels.py`, `pool.py`, `p3_pooled_boot.py`) and the Bayesian correlated t-test (`p3_bayes.py`) |
+| `deployment/` | Retrospective deployment simulation (rolling origin 2016-2022, audit workload and lead time): `p3_rolling.py` |
 | `kaggle/` | The exact Kaggle notebook cells used for the two GPU runs |
 | `results/` | All result files reported in the paper (per-split metrics, statistics, attention results, learning curve) |
 
@@ -57,6 +60,9 @@ python data_prep/04_build_partd.py <folder_with_partd_by_provider_csvs> <LEIE.cs
 # 3. New York exclusion list (for the external-label test)
 python data_prep/05_ny_exclusions.py <us_ny_med_exclusions.json> <LEIE.csv> data/ny_npi_exclusions.csv data/provider_year
 
+# 3b. State Medicaid exclusion lists with NPIs (32 states; OpenSanctions FtM exports us_<st>_med_exclusions)
+python data_prep/06_state_exclusions.py <folder_with_us_*_med_exclusions_json> data/state_medicaid_exclusions_npi_20261126.csv
+
 # 4. Benchmark (GPU recommended; on Kaggle see kaggle/run_kaggle.py)
 DATA=data WORK=out python benchmark/p3_bench.py phys grouped 3 5
 DATA=data WORK=out python benchmark/p3_bench.py phys temporal 3
@@ -80,6 +86,11 @@ python analysis/p3_recal.py out phys                   # cross-fitted Platt and 
 DATA=data WORK=out python robustness/p3_robust_deep.py noise   # label noise, all 7 models (needs benchmark/p3_bench.py alongside)
 DATA=data WORK=out python robustness/p3_robust_deep.py ny      # New York independent labels, all 7 models
 N_TRIALS=24 WORK=out/big python robustness/p3_tune_big.py     # tuning-budget sensitivity: 24 configurations, up to 30 epochs (needs benchmark/p3_bench.py alongside)
+HDS=phys REPLIST=0,1,2 python history/p3_hist.py; HDS=partd REPLIST=0,1,2 python history/p3_hist.py   # provider histories, 15 folds (needs benchmark/p3_bench.py alongside)
+SDS=phys python states/p3_states.py; SDS=partd python states/p3_states.py                         # 32-state independent labels
+python states/rebuild_test.py phys data && python states/p3_states_ci.py <dir> 2000                 # bootstrap intervals for the state test
+python stats/p3_pooled_boot.py <dir> phys 1000; python stats/p3_bayes.py                            # provider bootstrap and Bayesian correlated t-test
+SDS=phys python deployment/p3_rolling.py; SDS=partd python deployment/p3_rolling.py               # deployment simulation 2016-2022
 RUN1=out RUN2=out python analysis/make_figs.py && RUN1=out RUN2=out python analysis/make_figs2.py
 ```
 
@@ -126,12 +137,17 @@ python benchmark/evaluate.py score  data/phys phys my_predictions.csv        # c
 | `results/run3/p3_robust_noise.csv` | Label noise: 5 folds x q in {0, 0.25, 0.5} x 7 models (tuned) |
 | `results/run3/p3_robust_ny.csv` | New York independent labels (107 positives) and LEIE-in-New-York comparison (27 positives), 7 models |
 | `results/run4/results_phys_big_*.csv` | Tuning-budget sensitivity (Physician, grouped repeat 0): LightGBM, MLP, attention CNN-RNN and FT-Transformer with 24 configurations and up to 30 epochs; `epochs_run` gives the epochs actually trained |
+| `results/run6/hist_15fold.csv`, `tune_big_all.csv` | Provider histories on 15 folds per data source; tuning budget on 15 folds (FT-Transformer 5) |
+| `results/run7/p3_states_summary.csv`, `p3_states_ci.csv` | 32-state independent validation, overall and per large state, with bootstrap intervals |
+| `results/stats/p3_pooled_boot_*.csv`, `p3_bayes.csv` | Provider-level bootstrap of fold-averaged metrics (paired differences vs LightGBM and XGBoost) and Bayesian correlated t-test |
+| `results/deployment/p3_rolling_*.csv` | Deployment simulation per year and model: cases found, audits per case, lead time, lift, ROC-AUC |
 | `results/label_noise_results.csv`, `ny_external_results.csv` | Earlier fixed-configuration robustness runs (4 and 2 models; superseded by run 3) |
 
 Note: run 1 used `p3_bench.py` without the `DATA_FRAC` option; the version here adds only that option (default 1.0 = identical behaviour).
 
 ## Changelog
 
+* 2026-11-26 (paper draft v1.0): provider histories and tuning budget on all 15 folds (run 6, `kaggle/run6_cell.py`), independent validation on 32 state Medicaid exclusion lists with bootstrap intervals (run 7, `states/`), complementary statistics (`stats/`) and a retrospective deployment simulation (`deployment/`). The New York analysis (run 3) is superseded by the 32-state analysis.
 * 2026-11-26: added run 5 (`history/`, `results/run5/`): sequence models on each provider's billing history (genuine sequences).
 * 2026-11-26: added run 4 (`robustness/p3_tune_big.py`, `results/run4/`): four-fold tuning budget for LightGBM, MLP, FT-Transformer and attention CNN-RNN.
 * 2026-11-26: benchmark evaluation script (`benchmark/evaluate.py`) and `LEADERBOARD.md`; dollar-value and recalibration analyses.
@@ -141,5 +157,5 @@ Note: run 1 used `p3_bench.py` without the `DATA_FRAC` option; the version here 
 
 ## Licence and citation
 
-Code: MIT licence. Data: public U.S. government data; please cite CMS, OIG and OpenSanctions as data sources.
+Code: MIT licence. Data: public U.S. government data; please cite CMS, OIG and OpenSanctions as data sources. The state exclusion table is not redistributed here (OpenSanctions licence); rebuild it with `data_prep/06_state_exclusions.py`.
 If you use this code, please cite the paper above.

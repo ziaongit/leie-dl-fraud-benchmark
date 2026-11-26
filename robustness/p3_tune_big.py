@@ -6,7 +6,7 @@ random search and longer training:
   * wider search spaces; the FT-Transformer search includes the size of the published default configuration
     (token dimension 192, 3 layers, learning rate 1e-4; Gorishniy et al., 2021), always evaluated as the first configuration
 Everything else (data, preprocessing, training subset, metrics) is p3_bench.py unchanged.
-Usage: MODELS=LightGBM,MLP,AttnCNNRNN python p3_tune_big.py      (writes to $WORK, default /kaggle/working/big)
+Usage: MODELS=LightGBM,MLP,AttnCNNRNN REPLIST=0 python p3_tune_big.py      (writes to $WORK, default /kaggle/working/big; REPLIST selects grouped repeats)
 The number of epochs actually run per configuration is stored in the epochs_run column."""
 import os, sys, glob
 sys.argv = [sys.argv[0], 'phys', 'grouped', '1', '5']
@@ -38,6 +38,7 @@ src = src[:i] + '''def configs(name, rng):
         else: yield dict(ch=int(rng.choice([16, 32, 64, 128])), hid=int(rng.choice([32, 64, 128])), lr=float(rng.choice([3e-4, 1e-3, 3e-3])))
 
 ''' + src[j:]
+patch("    for rep in range(REPS):\n        salt =", "    for rep in [int(r) for r in os.environ.get('REPLIST', '0').split(',')]:\n        salt =")
 patch("t0 = time.time(); best = (-1, None, None)", "t0 = time.time(); best = (-1, None, None); EPLOG.clear()")
 patch("            r.update(metrics(y[te], best[1], w_all[te]))", "            r.update(metrics(y[te], best[1], w_all[te])); r['epochs_run'] = json.dumps(EPLOG); r['budget'] = 'big'")
 exec(compile(src, 'p3_bench_big', 'exec'))
